@@ -1,6 +1,7 @@
 import os.path
 import sys
 import re
+import pprint
 
 import sqlite3
 from datetime import datetime, timedelta
@@ -26,15 +27,15 @@ include_author = False
 include_link = True
 include_link_thumbnail = True
 use_privacy_frontends = True
-use_shortlink = True
-maximum_toots_count = 1
+use_shortlink = False
+maximum_toots_count = 5
 
 rss_feed_url = sys.argv[1]
 mastodon_instance = sys.argv[2]
 mastodon_username = sys.argv[3]
 mastodon_email_address = sys.argv[4].lower()
 mastodon_password = base64.b64decode(sys.argv[5]).decode("utf-8")
-tags_to_add = sys.argv[6]
+tags_to_add = "#macgarden"
 days_to_check = int(sys.argv[7])
 
 rss_feed_domain = re.sub('^[a-z]*://', '', rss_feed_url)
@@ -67,6 +68,16 @@ def determine_content_language(text):
 
     return language
 
+def slice_string(text, size):
+    # Subset the 'size' first characters
+    output = text[:size]
+    if len(text) > size and text[size] != " ":
+        # Find previous space index
+        index = output.rfind(" ")
+        # slice string
+        output = output[:index]
+    return output
+
 if not os.path.isfile("app_" + mastodon_instance + '.secret'):
     if Mastodon.create_app(
         rss_feed_domain,
@@ -93,7 +104,7 @@ except:
     print("ERROR: Failed to log " + mastodon_username + " into " + mastodon_instance)
     sys.exit(1)
 
-feed = feedparser.parse(rss_feed_url)
+feed = feedparser.parse("./feed")
 print('Retrieved ' + str(len(feed.entries)) + ' feed entries!')
 
 toots_count = 0
@@ -110,7 +121,14 @@ for feed_entry in reversed(feed.entries):
         feed_entry_id = str(feed_entry.updated_parsed)
     feed_entry_id = hashlib.md5(feed_entry_id.encode()).hexdigest()
 
-    print('Entry found: ' + feed_entry_id)
+    # pp = pprint.PrettyPrinter(indent=4)
+    # print("\n\n")
+    # print("#"*80)
+    # pp.pprint(feed_entry.tags)
+    # # terms = [tag['term'] for tag in feed_entry.tags]
+    # print("#"*80)
+    # print("\n\n")
+    # print(feed_entry.summary_detail.value)
 
     db.execute(
         'SELECT * FROM entries WHERE feed_entry_id = ? AND mastodon_username = ? AND mastodon_instance = ?',
@@ -121,7 +139,6 @@ for feed_entry in reversed(feed.entries):
         feed_entry_date_raw = feed_entry.published_parsed
     else:
         feed_entry_date_raw = feed_entry.updated_parsed
-
     feed_entry_date = datetime(
             feed_entry_date_raw.tm_year, feed_entry_date_raw.tm_mon, feed_entry_date_raw.tm_mday,
             feed_entry_date_raw.tm_hour, feed_entry_date_raw.tm_min, feed_entry_date_raw.tm_sec)
@@ -129,22 +146,10 @@ for feed_entry in reversed(feed.entries):
 
     print(' > Date = ' + str(feed_entry_date))
     print(' > Age = ' + str(feed_entry_age))
-
-    if last is None and feed_entry_age < timedelta(days = days_to_check):
+    print(feed_entry.link)
+    if last is None and '/forum/' not in feed_entry.link:
         print(' > Processing...')
         linked_page = None
-
-        if feed_entry.link is not None:
-            try:
-                print(' > Retrieving the linked page: ' + feed_entry.link)
-                user_agent = UserAgent().firefox
-                headers = {'User-Agent': user_agent}
-                linked_page_request = urllib.request.Request(feed_entry.link, headers=headers)
-                linked_page_response = urllib.request.urlopen(linked_page_request).read()
-                linked_page_response = linked_page_response.decode('UTF-8')
-                linked_page = BeautifulSoup(linked_page_response, 'lxml')
-            except Exception as ex:
-                print('   > FAILURE!', ex)
 
         if 'twitter.com' in rss_feed_url or '/twitter/' in rss_feed_url:
             feed_entry_title = feed_entry.description
@@ -174,6 +179,13 @@ for feed_entry in reversed(feed.entries):
         media_urls = []
         media_urls_posted = []
 
+        # Grab first img
+        if 'macintoshgarden.org' in rss_feed_url:
+            soup = BeautifulSoup(feed_entry.summary_detail.value, 'html.parser')
+            summary = slice_string(soup.find_all('p')[0].text.strip(), 200)
+            images = soup.find_all('img')
+            media_urls.append(images[0]['src'] if images else None)
+
         if 'summary' in feed_entry:
             for p in re.finditer(r"https://pbs.twimg.com/[^ \xa0\"]*", feed_entry.summary):
                 twitter_media_url = p.group(0)
@@ -196,7 +208,7 @@ for feed_entry in reversed(feed.entries):
             thumbnail_url = thumbnail_url.replace('<meta content=\"', '')
             thumbnail_url = re.sub('\".*', '', thumbnail_url)
 
-            #print(' > Found link thumbnail media: ' + thumbnail_url)
+            # print(' > Found link thumbnail media: ' + thumbnail_url)
             media_urls.append(thumbnail_url)
 
         toot_media = []
@@ -251,7 +263,10 @@ for feed_entry in reversed(feed.entries):
             feed_entry_link = re.sub('\\?utm.*$', '', feed_entry_link)
             feed_entry_link = re.sub('/$', '', feed_entry_link)
 
-            toot_body += '\n\n🔗 ' + feed_entry_link
+            toot_body += '\n\n' + feed_entry_link
+
+        if summary:
+            toot_body += '\n\n' + summary
 
         if include_author and 'authors' in feed_entry:
             toot_body += '\nby ' + feed_entry.authors[0].name
@@ -261,6 +276,9 @@ for feed_entry in reversed(feed.entries):
 
         if tags_to_add: all_tags_to_add += ' ' + tags_to_add
         if dynamic_tags_to_add: all_tags_to_add += ' ' + dynamic_tags_to_add
+
+        # Pull out terms from the garden and hashtag em
+        all_tags_to_add = tags_to_add + " " + " ".join(['#' + re.sub('[^a-zA-Z0-9]', '', term.lower()).strip() for item in feed_entry.tags for term in [item['term']]])
 
         if all_tags_to_add != '':
             filtered_tags_to_add = ''
@@ -295,3 +313,5 @@ for feed_entry in reversed(feed.entries):
         if toots_count == maximum_toots_count:
             print('Exiting... Reached the maximum number of toots per run!')
             break
+    else:
+        print("Skipping...", feed_entry.link)
