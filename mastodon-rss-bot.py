@@ -28,7 +28,7 @@ include_link = True
 include_link_thumbnail = True
 use_privacy_frontends = True
 use_shortlink = False
-maximum_toots_count = 5
+maximum_toots_count = 1
 
 rss_feed_url = sys.argv[1]
 mastodon_instance = sys.argv[2]
@@ -184,7 +184,9 @@ for feed_entry in reversed(feed.entries):
             soup = BeautifulSoup(feed_entry.summary_detail.value, 'html.parser')
             summary = slice_string(soup.find_all('p')[0].text.strip(), 200)
             images = soup.find_all('img')
-            media_urls.append(images[0]['src'] if images else None)
+            image = images[0]['src'] if images else None
+            if image is not None and 'package-x-generic.png' not in image:
+                media_urls.append(image)
 
         if 'summary' in feed_entry:
             for p in re.finditer(r"https://pbs.twimg.com/[^ \xa0\"]*", feed_entry.summary):
