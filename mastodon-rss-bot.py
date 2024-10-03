@@ -185,7 +185,7 @@ for feed_entry in reversed(feed.entries):
             summary = slice_string(soup.find_all('p')[0].text.strip(), 200)
             images = soup.find_all('img')
             image = images[0]['src'] if images else None
-            if image is not None and 'package-x-generic.png' not in image:
+            if image is not None and 'package-x-generic.png' not in image and 'application-octet-stream.png' not in image:
                 media_urls.append(image)
 
         if 'summary' in feed_entry:
