@@ -182,7 +182,10 @@ for feed_entry in reversed(feed.entries):
         # Grab first img
         if 'macintoshgarden.org' in rss_feed_url:
             soup = BeautifulSoup(feed_entry.summary_detail.value, 'html.parser')
-            summary = slice_string(soup.find_all('p')[0].text.strip(), 200)
+            paragraphs = soup.find_all('p')
+            summary = None
+            if paragraphs is not None and len(paragraphs) > 0:
+                summary = slice_string(paragraphs[0].text.strip(), 200)
             images = soup.find_all('img')
             image = images[0]['src'] if images else None
             if image is not None and 'package-x-generic.png' not in image and 'application-octet-stream.png' not in image:
