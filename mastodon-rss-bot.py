@@ -283,7 +283,11 @@ for feed_entry in reversed(feed.entries):
         if dynamic_tags_to_add: all_tags_to_add += ' ' + dynamic_tags_to_add
 
         # Pull out terms from the garden and hashtag em
-        all_tags_to_add = tags_to_add + " " + " ".join(['#' + re.sub('[^a-zA-Z0-9]', '', term.lower()).strip() for item in feed_entry.tags for term in [item['term']]])
+        all_tags_to_add = tags_to_add + " " + " ".join([
+            '#' + re.sub('[^a-zA-Z0-9]', '', term.lower()).strip()
+             for item in getattr(feed_entry, 'tags', [])
+             for term in ([item['term']] if 'term' in item else [])
+        ])
 
         if all_tags_to_add != '':
             filtered_tags_to_add = ''
